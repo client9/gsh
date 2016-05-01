@@ -19,10 +19,12 @@ type FuncMap map[string](func(*Session, []string) error)
 func New() *Session {
 	s := Session{}
 	s.Env = envMap(os.Environ())
+	s.alias = make(map[string][]string)
 	s.fmap = FuncMap{
 		"alias":   Alias,
 		"cp":      Copy,
 		"echo":    Echo,
+		"export":  Export,
 		"mkdir":   Mkdir,
 		"mv":      Move,
 		"unalias": Unalias,
@@ -59,9 +61,7 @@ func (s *Session) Funcs(funcs FuncMap) *Session {
 
 func (s *Session) Script(str string) *Session {
 	// break apart script into single commands
-
 	s.cmds = unbreak(str)
-	s.SetError(nil)
 	return s
 }
 
@@ -82,7 +82,12 @@ func (s *Session) Exec(cmds ...string) error {
 	if s.Error() != nil {
 		return nil
 	}
-	if len(cmds) > 0 {
+	switch len(cmds) {
+	case 0:
+		return fmt.Errorf("Exec called without args?")
+	case 1:
+		s.cmds = unbreak(cmds[0])
+	default:
 		s.cmds = cmds
 	}
 	return s.Run()
@@ -97,16 +102,17 @@ func (s *Session) Run() error {
 		cmd = os.Expand(cmd,
 			(func(key string) string { return s.Env[key] }))
 
-		log.Printf("RUNNING: %s", cmd)
 		parts, err := shlex.Split(cmd)
 		if err != nil {
-			s.err = err
+			s.SetError(fmt.Errorf("Bad line %q: %s", cmd, err))
 			return err
 		}
 		// effectively blank line
 		if len(parts) == 0 {
 			continue
 		}
+
+		log.Printf("RUNNING: %s", cmd)
 
 		// TODO: is arg0 an environment override
 		// only for external commands I think
@@ -125,7 +131,7 @@ func (s *Session) Run() error {
 			}
 			continue
 		}
-		log.Printf("not in map: %s", parts[0])
+		log.Printf("Shelling out... not in map: %s", parts[0])
 		// ok shell out
 		execCmd := exec.Command(parts[0], parts[1:]...)
 
@@ -140,6 +146,7 @@ func (s *Session) Run() error {
 		err = execCmd.Run()
 		if err != nil {
 			s.SetError(err)
+			return err
 		}
 	}
 	return nil
@@ -147,7 +154,7 @@ func (s *Session) Run() error {
 
 func Export(s *Session, cli []string) error {
 	if len(cli) != 2 {
-		return fmt.Errorf("Expected only 1 arg")
+		return fmt.Errorf("%s: Expected only 1 arg: got %v", cli[0], cli[1:])
 	}
 	//name := cli[0]
 	kv := cli[1]
@@ -315,9 +322,11 @@ func unbreak(s string) []string {
 		// dangle.. itgnore for now
 		cmds = append(cmds, last)
 	}
-	for i, ll := range cmds {
-		log.Printf("LINE %d: %s", i+1, ll)
-	}
+	/*
+		for i, ll := range cmds {
+			log.Printf("LINE %d: %s", i+1, ll)
+		}
+	*/
 	return cmds
 }
 
@@ -354,11 +363,15 @@ func Move(s *Session, cli []string) error {
 
 	if fileIsDirectory(dest) {
 		for _, val := range src {
-			os.Rename(val, filepath.Join(dest, val))
+			base := filepath.Base(val)
+			srcdest := filepath.Join(dest, base)
+			os.Rename(val, srcdest)
 			if err != nil {
-				return err
+				return fmt.Errorf("%s %s %s failed: %s",
+					name, val, srcdest, err)
 			}
 		}
+		return nil
 	}
 
 	// destination is not a directory
@@ -368,7 +381,8 @@ func Move(s *Session, cli []string) error {
 	return os.Rename(src[0], dest)
 }
 
-func copyFile(dst, src string) error {
+func copyFile(src, dst string) error {
+	log.Printf("---> Copying %s to %s", src, dst)
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -395,11 +409,11 @@ func Copy(s *Session, cli []string) error {
 	f.BoolVar(&useGlob, "glob", false, "treat sources as globs")
 	err := f.Parse(fargs)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %s", name, err)
 	}
 	args := f.Args()
 	if len(args) < 2 {
-		return fmt.Errorf("Expected at least 2 args")
+		return fmt.Errorf("%s: Expected at least 2 args", name)
 	}
 
 	dest, src := args[len(args)-1], args[:len(args)-1]
@@ -408,23 +422,29 @@ func Copy(s *Session, cli []string) error {
 		for _, val := range src {
 			matches, err := filepath.Glob(val)
 			if err != nil {
-				return err
+				return fmt.Errorf("%s: glob for %q failed: %s",
+					name, val, err)
 			}
 			sources = append(sources, matches...)
 		}
 		if len(sources) == 0 {
-			return fmt.Errorf("No matching files")
+			return fmt.Errorf("%s: No matching files for %v",
+				name, src)
 		}
 		src = sources
 	}
 
 	if fileIsDirectory(dest) {
 		for _, val := range src {
-			copyFile(val, filepath.Join(dest, val))
+			base := filepath.Base(val)
+			srcdest := filepath.Join(dest, base)
+			copyFile(val, srcdest)
 			if err != nil {
-				return err
+				return fmt.Errorf("%s %s %s failed: %s",
+					name, val, srcdest, err)
 			}
 		}
+		return nil
 	}
 
 	// destination is not a directory

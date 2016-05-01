@@ -49,10 +49,11 @@ func (s *Session) Test(str string) bool {
 		return fmt.Sprintf("%q", s.Env[key])
 	})
 
-	t := template.New("nothing").Funcs(fmap)
-	t, err := t.Parse(fmt.Sprintf("{{ if %s }}1{{ else }}0{{ end }}", s))
+	t := template.New("gsh.test").Funcs(fmap)
+	src := fmt.Sprintf("{{ if (%s) }}1{{ else }}0{{ end }}", str)
+	t, err := t.Parse(src)
 	if err != nil {
-		s.SetError(err)
+		s.SetError(fmt.Errorf("Unable to parse %q: %s", src, err))
 		return false
 	}
 	out := bytes.Buffer{}
