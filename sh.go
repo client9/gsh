@@ -120,7 +120,7 @@ func (s *Session) Run() error {
 		// Insert Alias
 		if newargs, ok := s.alias[parts[0]]; ok {
 			parts = append(newargs, parts[1:]...)
-			log.Printf("ALIAS: %s", strings.Join(parts, " "))
+			log.Printf("   ALIAS: %s", strings.Join(parts, " "))
 		}
 
 		fn, ok := s.fmap[parts[0]]
