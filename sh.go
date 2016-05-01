@@ -31,12 +31,12 @@ func New() *Session {
 	return &s
 }
 
-func (s *Session) GetEnv(s string) string {
-	return s.Env[s]
+func (s *Session) GetEnv(key string) string {
+	return s.Env[key]
 }
 
-func (s *Session) PutEnv(s string, k value) {
-	s.Env[s] = k
+func (s *Session) PutEnv(key string, val string) {
+	s.Env[key] = val
 }
 
 func (s *Session) SetError(e error) {
@@ -97,7 +97,7 @@ func (s *Session) Run() error {
 		cmd = os.Expand(cmd,
 			(func(key string) string { return s.Env[key] }))
 
-		log.Printf("GOT: %s", cmd)
+		log.Printf("RUNNING: %s", cmd)
 		parts, err := shlex.Split(cmd)
 		if err != nil {
 			s.err = err
@@ -146,9 +146,12 @@ func (s *Session) Run() error {
 }
 
 func Export(s *Session, cli []string) error {
+	if len(cli) != 2 {
+		return fmt.Errorf("Expected only 1 arg")
+	}
 	//name := cli[0]
-	kv := cli[1:]
-	idx := strings.IndexByte('=')
+	kv := cli[1]
+	idx := strings.IndexByte(kv, '=')
 	if idx == -1 {
 		return fmt.Errorf("didnt find key/value")
 	}
@@ -323,7 +326,7 @@ func Move(s *Session, cli []string) error {
 	fargs := cli[1:]
 	useGlob := false
 	f := flag.NewFlagSet(name, flag.ContinueOnError)
-	f.BoolVar(&parents, "glob", false, "treat sources as globs")
+	f.BoolVar(&useGlob, "glob", false, "treat sources as globs")
 	err := f.Parse(fargs)
 	if err != nil {
 		return err
@@ -333,11 +336,11 @@ func Move(s *Session, cli []string) error {
 		return fmt.Errorf("Expected at least 2 args")
 	}
 
-	dest, src := args[len(arg)-1], args[:len(args)-1]
+	dest, src := args[len(args)-1], args[:len(args)-1]
 	if useGlob {
 		sources := []string{}
 		for _, val := range src {
-			matches, err := filepath.Glob(matches)
+			matches, err := filepath.Glob(val)
 			if err != nil {
 				return err
 			}
@@ -346,12 +349,12 @@ func Move(s *Session, cli []string) error {
 		if len(sources) == 0 {
 			return fmt.Errorf("No matching files")
 		}
-		src = source
+		src = sources
 	}
 
 	if fileIsDirectory(dest) {
 		for _, val := range src {
-			os.Rename(src, filepath.Join(dest, val))
+			os.Rename(val, filepath.Join(dest, val))
 			if err != nil {
 				return err
 			}
@@ -362,7 +365,7 @@ func Move(s *Session, cli []string) error {
 	if len(src) != 1 {
 		return fmt.Errorf("Last arg is not a directory")
 	}
-	return os.Rename(src, dest)
+	return os.Rename(src[0], dest)
 }
 
 func copyFile(dst, src string) error {
@@ -389,7 +392,7 @@ func Copy(s *Session, cli []string) error {
 	fargs := cli[1:]
 	useGlob := false
 	f := flag.NewFlagSet(name, flag.ContinueOnError)
-	f.BoolVar(&parents, "glob", false, "treat sources as globs")
+	f.BoolVar(&useGlob, "glob", false, "treat sources as globs")
 	err := f.Parse(fargs)
 	if err != nil {
 		return err
@@ -399,11 +402,11 @@ func Copy(s *Session, cli []string) error {
 		return fmt.Errorf("Expected at least 2 args")
 	}
 
-	dest, src := args[len(arg)-1], args[:len(args)-1]
+	dest, src := args[len(args)-1], args[:len(args)-1]
 	if useGlob {
 		sources := []string{}
 		for _, val := range src {
-			matches, err := filepath.Glob(matches)
+			matches, err := filepath.Glob(val)
 			if err != nil {
 				return err
 			}
@@ -412,12 +415,12 @@ func Copy(s *Session, cli []string) error {
 		if len(sources) == 0 {
 			return fmt.Errorf("No matching files")
 		}
-		src = source
+		src = sources
 	}
 
 	if fileIsDirectory(dest) {
 		for _, val := range src {
-			copyFile(src, filepath.Join(dest, val))
+			copyFile(val, filepath.Join(dest, val))
 			if err != nil {
 				return err
 			}
@@ -428,5 +431,5 @@ func Copy(s *Session, cli []string) error {
 	if len(src) != 1 {
 		return fmt.Errorf("Last arg is not a directory")
 	}
-	return copyFile(src, dest)
+	return copyFile(src[0], dest)
 }

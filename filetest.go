@@ -12,7 +12,8 @@ import (
 // BUG: does not use local session path
 
 func commandExists(path string) bool {
-	return exec.LookPath(path)
+	_, err := exec.LookPath(path)
+	return err == nil
 }
 
 func fileIsDirectory(path string) bool {
@@ -21,8 +22,8 @@ func fileIsDirectory(path string) bool {
 }
 
 func fileIsRegular(fname string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsRegular()
+	info, err := os.Stat(fname)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func fileExists(fname string) bool {
@@ -38,32 +39,36 @@ var fmap = template.FuncMap{
 	"basename":        path.Base,
 }
 
-func (s *Session) Test(s string) (bool, error) {
+
+func (s *Session) Test(str string) bool {
 	// special replacement of environment variables.
 	// in regular case we just ${foo} --> bar
 	// in this case they are quoted ${foo} --> "bar"
 	//  since they need to be golang proper values
-	s = os.Expand(s, (func(key string) string {
-		return fmt.Printf("%q", s.Env[key])
-	}))
+	str = os.Expand(str, func(key string) string {
+		return fmt.Sprintf("%q", s.Env[key])
+	})
 
 	t := template.New("nothing").Funcs(fmap)
 	t, err := t.Parse(fmt.Sprintf("{{ if %s }}1{{ else }}0{{ end }}", s))
 	if err != nil {
-		return false, err
+		s.SetError(err)
+		return false
 	}
 	out := bytes.Buffer{}
-	err = t.Execute(out, nil)
+	err = t.Execute(&out, nil)
 	if err != nil {
-		return false, err
+		s.SetError(err)
+		return false
 	}
 	result := out.String()
 	switch result {
 	case "0":
-		return false, nil
+		return false
 	case "1":
-		return true, nil
+		return true
 	default:
-		return false, fmt.Errorf("Unknown value from test: %q", result)
+		s.SetError(fmt.Errorf("Unknown value from test: %q", result))
+		return false
 	}
 }
