@@ -16,12 +16,25 @@ import (
 
 type FuncMap map[string](func(*Session, []string) error)
 
+type Session struct {
+	err    error
+	alias  map[string][]string
+	fmap   map[string](func(*Session, []string) error)
+	cmds   []string
+	dir    string
+	Env    map[string]string
+	Stdin  io.Reader
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
 func New() *Session {
 	s := Session{}
 	s.Env = envMap(os.Environ())
 	s.alias = make(map[string][]string)
 	s.fmap = FuncMap{
 		"alias":   Alias,
+		"cd":      Chdir,
 		"cp":      Copy,
 		"echo":    Echo,
 		"export":  Export,
@@ -30,9 +43,23 @@ func New() *Session {
 		"unalias": Unalias,
 		"which":   Which,
 	}
+
+	// save current directory.
+	// restored on close
+	if dir, err := os.Getwd(); err != nil {
+		s.dir = dir
+	}
+
 	return &s
 }
 
+// Close returns the current process state to went it was started.
+func (s *Session) Close() error {
+	if len(s.dir) != 0 {
+		return os.Chdir(s.dir)
+	}
+	return nil
+}
 func (s *Session) GetEnv(key string) string {
 	return s.Env[key]
 }
@@ -191,6 +218,15 @@ func Which(s *Session, cli []string) error {
 	return nil
 }
 
+func Chdir(s *Session, cli []string) error {
+	name := cli[0]
+	if len(cli) != 2 {
+		return fmt.Errorf("%s: must provide a directory", name)
+	}
+	dir := cli[1]
+	return os.Chdir(dir)
+}
+
 func Mkdir(s *Session, cli []string) error {
 	name := cli[0]
 	fargs := cli[1:]
@@ -255,18 +291,6 @@ func Unalias(s *Session, cli []string) error {
 	default:
 		return fmt.Errorf("%s too many args", name)
 	}
-}
-
-type Session struct {
-	err   error
-	alias map[string][]string
-	fmap  map[string](func(*Session, []string) error)
-	cmds  []string
-
-	Env    map[string]string
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
 }
 
 // envMap converts an environment in []string{"k=v"}
