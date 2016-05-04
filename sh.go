@@ -75,6 +75,20 @@ func (s *Session) Error() error {
 	return s.err
 }
 
+// Glob does the os.Glob but handles errors.
+//  useful in making for-loops
+func (s *Session) Glob(pattern string) []string {
+	if s.Error() != nil {
+		return nil
+	}
+	match, err := filepath.Glob(pattern)
+	if err != nil {
+		s.SetError(fmt.Errorf("Unable to glob: %s", err))
+		return nil
+	}
+	return match
+}
+
 func (s *Session) Funcs(funcs FuncMap) *Session {
 	for k, v := range funcs {
 		if v == nil {
