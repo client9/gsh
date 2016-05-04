@@ -81,6 +81,12 @@ func (s *Session) Glob(pattern string) []string {
 	if s.Error() != nil {
 		return nil
 	}
+
+	// replace shell variables first
+	// e.g. "${BASE}/*.txt"
+	pattern = os.Expand(pattern,
+		(func(key string) string { return s.Env[key] }))
+
 	match, err := filepath.Glob(pattern)
 	if err != nil {
 		s.SetError(fmt.Errorf("Unable to glob: %s", err))
