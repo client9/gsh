@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -41,6 +43,7 @@ func New() *Session {
 		"mkdir":   Mkdir,
 		"mv":      Move,
 		"unalias": Unalias,
+		"wget":    Wget,
 		"which":   Which,
 	}
 
@@ -311,6 +314,56 @@ func Unalias(s *Session, cli []string) error {
 	default:
 		return fmt.Errorf("%s too many args", name)
 	}
+}
+
+func Wget(s *Session, cli []string) error {
+	name, fargs := cli[0], cli[1:]
+	f := flag.NewFlagSet(name, flag.ExitOnError)
+	flagMethod := f.String("method", "GET", "HTTP method")
+	flagOutput := f.String("O", "", "Output file")
+	flagNoClobber := f.Bool("nc", false, "No Clobber, do not download if file already exists")
+	err := f.Parse(fargs)
+	if err != nil {
+		return err
+	}
+	args := f.Args()
+	if len(args) != 1 {
+		return fmt.Errorf("%s requires exactly one arg, got %d", name, len(args))
+	}
+	// this is the url
+	source := args[0]
+	if *flagOutput == "" {
+		*flagOutput = path.Base(source)
+	}
+
+	if *flagNoClobber {
+		if _, err := os.Stat(source); err == nil {
+			return nil
+		}
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest(*flagMethod, source, nil)
+	if err != nil {
+		return fmt.Errorf("%s: failed to create request: %s", name, err)
+	}
+	// req.Header.Add("If-None-Match", `W/"wyzzy"`)
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("%s: request failed: %s", name, err)
+	}
+	out, err := os.Create(*flagOutput)
+	if err != nil {
+		return fmt.Errorf("%s: unable to create output file %s", name, err)
+	}
+	defer resp.Body.Close()
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		out.Close()
+		os.Remove(*flagOutput)
+		return fmt.Errorf("%s: request copy failed %s", name, err)
+	}
+	return out.Close()
 }
 
 // envMap converts an environment in []string{"k=v"}
