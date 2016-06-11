@@ -175,7 +175,7 @@ func (s *Session) Run() error {
 
 		fn, ok := s.fmap[parts[0]]
 		if ok {
-			err := fn(s, parts)
+			err = fn(s, parts)
 			if err != nil {
 				s.SetError(err)
 				return err
@@ -337,7 +337,7 @@ func Wget(s *Session, cli []string) error {
 	}
 
 	if *flagNoClobber {
-		if _, err := os.Stat(source); err == nil {
+		if _, err = os.Stat(source); err == nil {
 			return nil
 		}
 	}
@@ -447,7 +447,8 @@ func Move(s *Session, cli []string) error {
 	if useGlob {
 		sources := []string{}
 		for _, val := range src {
-			matches, err := filepath.Glob(val)
+			var matches []string
+			matches, err = filepath.Glob(val)
 			if err != nil {
 				return err
 			}
@@ -518,7 +519,8 @@ func Copy(s *Session, cli []string) error {
 	if useGlob {
 		sources := []string{}
 		for _, val := range src {
-			matches, err := filepath.Glob(val)
+			var matches []string
+			matches, err = filepath.Glob(val)
 			if err != nil {
 				return fmt.Errorf("%s: glob for %q failed: %s",
 					name, val, err)
